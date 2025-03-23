@@ -7,7 +7,7 @@ from IPython.utils.io import Tee
 from tqdm import tqdm
 
 from Backtest.data import LIMITS, BacktestData, read_day_data
-from Backtest.datamodel import Observation, Order, OrderDepth, Symbol, Trade, TradingState
+from Backtest.datamodel import Listing, Observation, Order, OrderDepth, Symbol, Trade, TradingState
 from Backtest.file_reader import FileReader
 from Backtest.models import ActivityLogRow, BacktestResult, MarketTrade, SandboxLogRow, TradeRow
 
@@ -25,12 +25,7 @@ def prepare_state(state: TradingState, data: BacktestData) -> None:
 
         state.order_depths[product] = order_depth
 
-        state.listings[product] = {
-            "symbol": product,
-            "product": product,
-            "denomination": 1,
-        }
-
+        state.listings[product] = Listing(product, product, 1)
 
 def create_activity_logs(
     state: TradingState,
