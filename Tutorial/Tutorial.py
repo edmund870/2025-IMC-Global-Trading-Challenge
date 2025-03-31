@@ -319,12 +319,12 @@ class fair_value:
         base = 10_000
         mid = self.order_book.most_mid_price()
 
-        if mid > base:
-            return base - 1
-        elif mid < base:
-            return base + 1
-        else:
-            return base
+        # if mid > base:
+        #     return base - 1
+        # elif mid < base:
+        #     return base + 1
+        # else:
+        return base
 
     def log_likelihood(self, sigma2, y_diff, residual):
         # Number of observations
@@ -503,7 +503,7 @@ class trading_strategy:
             best_buy = min(max_price, highest_trade, highest_bid)
             bid_range = int(abs(best_buy - worst_buy))
             if bid_range == 0:
-                bid_range = 2
+                bid_range = self.order_book.spread()
             bid_qty = self.ladder(self.max_buy, n=bid_range, decay=decay)
             for i in range(bid_range):
                 if bid_qty[i] != 0:
@@ -515,7 +515,7 @@ class trading_strategy:
             worst_sell = min(max_price, highest_trade, lowest_ask)
             ask_range = int(abs(worst_sell - best_sell))
             if ask_range == 0:
-                ask_range = 2
+                ask_range = self.order_book.spread()
             ask_qty = self.ladder(qty=self.max_sell, n=ask_range, decay=decay)
             for i in range(ask_range):
                 if ask_qty[i] != 0:
@@ -534,6 +534,7 @@ class trading_strategy:
                     self.max_sell -= sell_amount
                 else:
                     break
+
         if quote == quotes.ask:
             for ask, ask_vol in self.order_book.asks:
                 ask_vol = abs(ask_vol)
@@ -546,30 +547,21 @@ class trading_strategy:
 
         return trades
 
-    def rest_order(self, price, quote):
+    def rest_order(self, quote, price, quantity):
         trades = []
         if quote == quotes.bid:
             # resting bids
-            if self.product == tradable_product.RAINFOREST_RESIN:
-                adj = self.order_book.depth(quote=quotes.bid) - 1
-                price += adj
-
             final_buy_price = int(min(self.fair_value, price))
+            trades.append(Order(self.product, final_buy_price, quantity))
 
-            trades.append(Order(self.product, final_buy_price, self.max_buy))
         if quote == quotes.ask:
             # resting ask
-            if self.product == tradable_product.RAINFOREST_RESIN:
-                adj = self.order_book.depth(quote=quotes.ask) - 1
-                price -= adj
-
             final_sell_price = int(max(self.fair_value, price))
-
             trades.append(
                 Order(
                     self.product,
                     final_sell_price,
-                    -self.max_sell,
+                    -quantity,
                 )
             )
         return trades
@@ -602,38 +594,88 @@ class trading_strategy:
         orders += self.fv_arb(fv=max_sell_price, quote=quotes.bid)
 
         if self.max_buy > 0:
-            highest_buy = self.order_book.high_volume_quotes(quote=quotes.bid)[0] + 1
-            if (
-                self.order_book.depth(quote=quotes.ask)
-                > self.order_book.depth(quote=quotes.bid)
-                and self.position_pct < -threshold
-            ):
-                orders += self.ladder_orders(
-                    max_price=max_buy_price,
-                    highest_trade=highest_buy,
+            if self.product == tradable_product.RAINFOREST_RESIN:
+                highest_buy = max(
+                    [0]
+                    + [
+                        self.order_book.get_level(quote=quotes.bid, level=i)[0]
+                        for i in range(self.order_book.depth(quote=quotes.bid))
+                        if self.order_book.get_level(quote=quotes.bid, level=i)[0]
+                        < max_buy_price
+                    ]
+                )
+                if self.position_pct >= -threshold:
+                    if highest_buy >= max_buy_price - 1:
+                        highest_buy = max_buy_price - 2
+
+                orders += self.rest_order(
                     quote=quotes.bid,
-                    decay=decay,
+                    price=highest_buy + 1,
+                    quantity=self.max_buy,
                 )
 
-            else:
-                orders += self.rest_order(price=highest_buy, quote=quotes.bid)
+            if self.product == tradable_product.KELP:
+                highest_buy = (
+                    self.order_book.high_volume_quotes(quote=quotes.bid)[0] + 1
+                )
+                if (
+                    self.order_book.depth(quote=quotes.ask)
+                    > self.order_book.depth(quote=quotes.bid)
+                    and self.position_pct <= -threshold
+                ):
+                    orders += self.ladder_orders(
+                        max_price=max_buy_price,
+                        highest_trade=highest_buy,
+                        quote=quotes.bid,
+                        decay=decay,
+                    )
+
+                else:
+                    orders += self.rest_order(
+                        quote=quotes.bid, price=highest_buy, quantity=self.max_buy
+                    )
 
         if self.max_sell > 0:
-            highest_sell = self.order_book.high_volume_quotes(quote=quotes.ask)[0] - 1
-            if (
-                self.order_book.depth(quote=quotes.ask)
-                < self.order_book.depth(quote=quotes.bid)
-                and self.position_pct > threshold
-            ):
-                orders += self.ladder_orders(
-                    max_price=max_sell_price,
-                    highest_trade=highest_sell,
+            if self.product == tradable_product.RAINFOREST_RESIN:
+                highest_sell = min(
+                    [1e6]
+                    + [
+                        self.order_book.get_level(quote=quotes.ask, level=i)[0]
+                        for i in range(self.order_book.depth(quote=quotes.ask))
+                        if self.order_book.get_level(quote=quotes.ask, level=i)[0]
+                        > max_sell_price
+                    ]
+                )
+                if self.position_pct <= threshold:
+                    if highest_sell <= max_sell_price + 1:
+                        highest_sell = max_sell_price + 2
+
+                orders += self.rest_order(
                     quote=quotes.ask,
-                    decay=decay,
+                    price=highest_sell - 1,
+                    quantity=self.max_sell,
                 )
 
-            else:
-                orders += self.rest_order(price=highest_sell, quote=quotes.ask)
+            if self.product == tradable_product.KELP:
+                highest_sell = (
+                    self.order_book.high_volume_quotes(quote=quotes.ask)[0] - 1
+                )
+                if (
+                    self.order_book.depth(quote=quotes.ask)
+                    < self.order_book.depth(quote=quotes.bid)
+                    and self.position_pct >= threshold
+                ):
+                    orders += self.ladder_orders(
+                        max_price=max_sell_price,
+                        highest_trade=highest_sell,
+                        quote=quotes.ask,
+                        decay=decay,
+                    )
+
+                else:
+                    orders += self.rest_order(
+                        quote=quotes.ask, price=highest_sell, quantity=self.max_sell
+                    )
 
         # logger.print(self.product, self.fair_value)
         # logger.print(orders)
@@ -672,8 +714,8 @@ class Trader:
                 tradable_product.RAINFOREST_RESIN: {
                     "ask_slip": -1,
                     "bid_slip": 1,
-                    "decay": 0.5,
-                    "threshold": 1.2,
+                    "decay": 0.1,
+                    "threshold": 0.0,
                 },
                 tradable_product.KELP: {
                     "mu": 0,
