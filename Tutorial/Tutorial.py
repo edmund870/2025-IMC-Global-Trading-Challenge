@@ -188,19 +188,6 @@ class orderbook:
         self.asks = order_depth.sell_orders.items()
 
     def top_of_book(self, quote: quotes) -> tuple[int, int]:
-        """
-        Top of book bids and asks
-
-        Parameters
-        ----------
-        quote : quotes
-            bid / ask
-
-        Returns
-        -------
-        tuple[int, int]
-            top of book price, top of book volume
-        """
         if quote == quotes.bid:
             return max(self.bids, key=lambda tup: tup[0])
         if quote == quotes.ask:
@@ -213,19 +200,6 @@ class orderbook:
             return list(self.asks)[level]
 
     def high_volume_quotes(self, quote: quotes) -> tuple[int, int]:
-        """
-        retrive quotes with highest volume
-
-        Parameters
-        ----------
-        quote : quotes
-            bid / ask
-
-        Returns
-        -------
-        tuple[int, int]
-            highest volume price, highest volume volume
-        """
         if quote == quotes.bid:
             return max(self.bids, key=lambda tup: tup[1])
         if quote == quotes.ask:
@@ -292,42 +266,16 @@ class orderbook:
 
 class fair_value:
     def __init__(self, product: tradable_product, order_book: orderbook):
-        """
-        Compute fair value of products
-
-        Parameters
-        ----------
-        product : tradable_product
-            product type
-        order_book : orderbook
-            orderbook class
-        """
         self.product = product
         self.order_book = order_book
 
     def RAINFOREST_RESIN_FV(
         self,
     ) -> int:
-        """
-        FV of rainforest resin
-
-        Returns
-        -------
-        int
-            FV
-        """
         base = 10_000
-        mid = self.order_book.most_mid_price()
-
-        # if mid > base:
-        #     return base - 1
-        # elif mid < base:
-        #     return base + 1
-        # else:
         return base
 
     def log_likelihood(self, sigma2, y_diff, residual):
-        # Number of observations
         T = len(y_diff)
 
         ll = -T / 2 * np.log(2 * np.pi * sigma2) - (1 / (2 * sigma2)) * np.sum(
@@ -390,25 +338,6 @@ class fair_value:
         most_mid_cache: deque,
         forecast_cache: deque,
     ) -> tuple[int, int, float]:
-        """
-        FV of KELP
-
-        Parameters
-        ----------
-        product_params : dict
-            product specific parameters
-        mid_cache : deque
-            cache of midprices
-        micro_cache : deque
-            cache of microprices
-        forecast_cache : deque
-            cache of forecast
-
-        Returns
-        -------
-        tuple[int, int, float]
-            midprice, microprice, forecast (aka FV)
-        """
         most_mid = self.order_book.most_mid_price()
         micro_price = self.order_book.micro_price()
         mid_price = self.order_book.mid_price()
@@ -422,7 +351,6 @@ class fair_value:
                 X2_diff=np.diff(micro_cache),
                 initial_params=[-0.603, 0.1, 0.237],
             )
-            logger.print(calib_params)
 
             theta_1 = calib_params[0]
             alpha_1 = calib_params[1]
@@ -431,10 +359,6 @@ class fair_value:
             theta_1 = product_params["MA1_coeff"]
             alpha_1 = product_params["most_mid_coeff"]
             alpha_2 = product_params["micro_price_coeff"]
-
-        # logger.print(f"theta_1 = {theta_1}")
-        # logger.print(f"alpha_1 = {alpha_1}")
-        # logger.print(f"alpha_2 = {alpha_2}")
 
         if len(micro_cache) >= 2:
             micro_delta = micro_cache[-1] - micro_cache[-2]
@@ -461,33 +385,21 @@ class trading_strategy:
     def __init__(
         self,
         product: tradable_product,
+        product_params: dict,
         position: int,
         position_limit: int,
         order_book: orderbook,
         fair_value: int | float,
     ):
-        """
-        trading strategy
-
-        Parameters
-        ----------
-        product : tradable_product
-            product type
-        position : int
-            current position
-        position_limit : int
-            max position
-        order_book : orderbook
-            orderbook of bids and asks
-        fair_value : int | float
-            fair value of product
-        """
         self.product = product
+        self.product_params = product_params
         self.position_pct = position / position_limit
         self.max_buy = position_limit - position
         self.max_sell = position_limit + position
         self.fair_value = fair_value
         self.order_book = order_book
+        self.max_buy_price = fair_value + product_params.get("ask_slip", 0)
+        self.max_sell_price = fair_value + product_params.get("bid_slip", 0)
 
     def ladder(self, qty, n, decay):
         raw_values = [math.exp(-decay * i) for i in range(1, n + 1)]
@@ -496,7 +408,7 @@ class trading_strategy:
         return ladder
 
     def ladder_orders(self, max_price, highest_trade, quote, decay):
-        trades = []
+        orders = []
         if quote == quotes.bid:
             highest_bid = self.order_book.get_level(quote=quotes.bid, level=0)[0]
             worst_buy = max(max_price, highest_trade, highest_bid)
@@ -507,7 +419,7 @@ class trading_strategy:
             bid_qty = self.ladder(self.max_buy, n=bid_range, decay=decay)
             for i in range(bid_range):
                 if bid_qty[i] != 0:
-                    trades.append(Order(self.product, int(best_buy + i), bid_qty[i]))
+                    orders.append(Order(self.product, int(best_buy + i), bid_qty[i]))
 
         if quote == quotes.ask:
             lowest_ask = self.order_book.get_level(quote=quotes.ask, level=0)[0]
@@ -519,18 +431,20 @@ class trading_strategy:
             ask_qty = self.ladder(qty=self.max_sell, n=ask_range, decay=decay)
             for i in range(ask_range):
                 if ask_qty[i] != 0:
-                    trades.append(Order(self.product, int(best_sell - i), -ask_qty[i]))
+                    orders.append(Order(self.product, int(best_sell - i), -ask_qty[i]))
 
-        return trades
+        return orders
 
-    def fv_arb(self, fv, quote):
-        trades = []
+    def fv_arb(self, quote, avg_price):
+        orders = []
         if quote == quotes.bid:
             for bid, bid_vol in self.order_book.bids:
                 bid_vol = abs(bid_vol)
-                if bid >= fv:  # if bid > fv want to sell
+                if (
+                    bid >= self.max_sell_price and bid >= avg_price
+                ):  # if bid > fv want to sell
                     sell_amount = min(bid_vol, self.max_sell)
-                    trades.append(Order(self.product, bid, -sell_amount))
+                    orders.append(Order(self.product, bid, -sell_amount))
                     self.max_sell -= sell_amount
                 else:
                     break
@@ -538,144 +452,116 @@ class trading_strategy:
         if quote == quotes.ask:
             for ask, ask_vol in self.order_book.asks:
                 ask_vol = abs(ask_vol)
-                if ask <= fv:  # if ask < fv want to buy
+                if (
+                    ask <= self.max_buy_price and ask <= avg_price
+                ):  # if ask < fv want to buy
                     buy_amount = min(ask_vol, self.max_buy)
-                    trades.append(Order(self.product, ask, buy_amount))
+                    orders.append(Order(self.product, ask, buy_amount))
                     self.max_buy -= buy_amount
                 else:
                     break
 
-        return trades
+        return orders
 
     def rest_order(self, quote, price, quantity):
-        trades = []
+        orders = []
         if quote == quotes.bid:
             # resting bids
             final_buy_price = int(min(self.fair_value, price))
-            trades.append(Order(self.product, final_buy_price, quantity))
+            orders.append(Order(self.product, final_buy_price, quantity))
 
         if quote == quotes.ask:
             # resting ask
             final_sell_price = int(max(self.fair_value, price))
-            trades.append(
+            orders.append(
                 Order(
                     self.product,
                     final_sell_price,
                     -quantity,
                 )
             )
-        return trades
+        return orders
 
-    def market_make(
-        self, ask_slip: int, bid_slip: int, decay, threshold
-    ) -> list[Order]:
-        """
-        Market making strategy
-        done by quoting bids and asks below / above fair value
-
-        Parameters
-        ----------
-        ask_slip : int
-            how much below fair value am I willing to buy
-        bid_slip : int
-            how much above fair value am I willing to sell
-
-        Returns
-        -------
-        list[Order]
-            list of orders
-        """
-
+    def market_make_KELP(self) -> list[Order]:
         orders = []
-        max_buy_price = self.fair_value + ask_slip
-        max_sell_price = self.fair_value + bid_slip
-
-        orders += self.fv_arb(fv=max_buy_price, quote=quotes.ask)
-        orders += self.fv_arb(fv=max_sell_price, quote=quotes.bid)
 
         if self.max_buy > 0:
-            if self.product == tradable_product.RAINFOREST_RESIN:
-                highest_buy = max(
-                    [0]
-                    + [
-                        self.order_book.get_level(quote=quotes.bid, level=i)[0]
-                        for i in range(self.order_book.depth(quote=quotes.bid))
-                        if self.order_book.get_level(quote=quotes.bid, level=i)[0]
-                        < max_buy_price
-                    ]
-                )
-                if self.position_pct >= -threshold:
-                    if highest_buy >= max_buy_price - 1:
-                        highest_buy = max_buy_price - 2
-
-                orders += self.rest_order(
+            highest_buy = self.order_book.high_volume_quotes(quote=quotes.bid)[0] + 1
+            if self.order_book.depth(quote=quotes.ask) > self.order_book.depth(
+                quote=quotes.bid
+            ) and self.position_pct <= -self.product_params.get("threshold", 0):
+                orders += self.ladder_orders(
+                    max_price=self.max_buy_price,
+                    highest_trade=highest_buy,
                     quote=quotes.bid,
-                    price=highest_buy + 1,
-                    quantity=self.max_buy,
+                    decay=self.product_params.get("decay", 0),
                 )
 
-            if self.product == tradable_product.KELP:
-                highest_buy = (
-                    self.order_book.high_volume_quotes(quote=quotes.bid)[0] + 1
+            else:
+                orders += self.rest_order(
+                    quote=quotes.bid, price=highest_buy, quantity=self.max_buy
                 )
-                if (
-                    self.order_book.depth(quote=quotes.ask)
-                    > self.order_book.depth(quote=quotes.bid)
-                    and self.position_pct <= -threshold
-                ):
-                    orders += self.ladder_orders(
-                        max_price=max_buy_price,
-                        highest_trade=highest_buy,
-                        quote=quotes.bid,
-                        decay=decay,
-                    )
-
-                else:
-                    orders += self.rest_order(
-                        quote=quotes.bid, price=highest_buy, quantity=self.max_buy
-                    )
 
         if self.max_sell > 0:
-            if self.product == tradable_product.RAINFOREST_RESIN:
-                highest_sell = min(
-                    [1e6]
-                    + [
-                        self.order_book.get_level(quote=quotes.ask, level=i)[0]
-                        for i in range(self.order_book.depth(quote=quotes.ask))
-                        if self.order_book.get_level(quote=quotes.ask, level=i)[0]
-                        > max_sell_price
-                    ]
-                )
-                if self.position_pct <= threshold:
-                    if highest_sell <= max_sell_price + 1:
-                        highest_sell = max_sell_price + 2
-
-                orders += self.rest_order(
+            highest_sell = self.order_book.high_volume_quotes(quote=quotes.ask)[0] - 1
+            if self.order_book.depth(quote=quotes.ask) < self.order_book.depth(
+                quote=quotes.bid
+            ) and self.position_pct >= self.product_params.get("threshold", 0):
+                orders += self.ladder_orders(
+                    max_price=self.max_sell_price,
+                    highest_trade=highest_sell,
                     quote=quotes.ask,
-                    price=highest_sell - 1,
-                    quantity=self.max_sell,
+                    decay=self.product_params.get("decay", 0),
                 )
 
-            if self.product == tradable_product.KELP:
-                highest_sell = (
-                    self.order_book.high_volume_quotes(quote=quotes.ask)[0] - 1
+            else:
+                orders += self.rest_order(
+                    quote=quotes.ask, price=highest_sell, quantity=self.max_sell
                 )
-                if (
-                    self.order_book.depth(quote=quotes.ask)
-                    < self.order_book.depth(quote=quotes.bid)
-                    and self.position_pct >= threshold
-                ):
-                    orders += self.ladder_orders(
-                        max_price=max_sell_price,
-                        highest_trade=highest_sell,
-                        quote=quotes.ask,
-                        decay=decay,
-                    )
+        return orders
 
-                else:
-                    orders += self.rest_order(
-                        quote=quotes.ask, price=highest_sell, quantity=self.max_sell
-                    )
+    def market_make_RESIN(self) -> list[Order]:
+        orders = []
+
+        if self.max_buy > 0:
+            highest_buy = max(
+                [0]
+                + [
+                    self.order_book.get_level(quote=quotes.bid, level=i)[0]
+                    for i in range(self.order_book.depth(quote=quotes.bid))
+                    if self.order_book.get_level(quote=quotes.bid, level=i)[0]
+                    < self.fair_value - 1
+                ]
+            )
+            if self.position_pct >= -self.product_params.get("threshold", 0):
+                if highest_buy >= self.fair_value - 2:
+                    highest_buy = self.fair_value - 3
+
+            orders += self.rest_order(
+                quote=quotes.bid,
+                price=highest_buy + 1,
+                quantity=self.max_buy,
+            )
+
+        if self.max_sell > 0:
+            highest_sell = min(
+                [1e6]
+                + [
+                    self.order_book.get_level(quote=quotes.ask, level=i)[0]
+                    for i in range(self.order_book.depth(quote=quotes.ask))
+                    if self.order_book.get_level(quote=quotes.ask, level=i)[0]
+                    > self.fair_value + 1
+                ]
+            )
+            if self.position_pct <= self.product_params.get("threshold", 0):
+                if highest_sell <= self.fair_value + 2:
+                    highest_sell = self.fair_value + 3
+
+            orders += self.rest_order(
+                quote=quotes.ask,
+                price=highest_sell - 1,
+                quantity=self.max_sell,
+            )
 
         # logger.print(self.product, self.fair_value)
         # logger.print(orders)
@@ -683,59 +569,105 @@ class trading_strategy:
 
     def directional(
         self,
-        product,
-        position,
-        position_limit,
-        bids,
-        asks,
-        fair_value,
-        up_width,
-        down_width,
-        bid_spread,
-        ask_spread,
     ):
         pass
 
 
 class Trader:
     def __init__(self, params: dict = None):
-        """
-        On initialization, check for product parameters
-
-        Parameters
-        ----------
-        params : dict, optional
-            product parameters, by default None
-        """
         if params is not None:
             self.params = params
         else:
             self.params = {
                 tradable_product.RAINFOREST_RESIN: {
-                    "ask_slip": -1,
-                    "bid_slip": 1,
+                    "ask_slip": 1,
+                    "bid_slip": -1,
                     "decay": 0.1,
                     "threshold": 0.0,
                 },
                 tradable_product.KELP: {
                     "mu": 0,
                     "sigma2": 0.3798141,
-                    "MA1_coeff": -0.56866306,  # -0.56871383,
-                    "most_mid_coeff": 0.12107209,  # 0.30679742,
+                    "MA1_coeff": -0.56866306,
+                    "most_mid_coeff": 0.12107209,
                     "micro_price_coeff": 0.27218619,
-                    "ask_slip": 0,  # -2,
-                    "bid_slip": 0,  # 0.15,
                     "decay": 0.6,
                     "threshold": 0.8,
                 },
             }
 
     position_cache = copy.deepcopy(empty_dict_cache)
+    avg_long_price_cache = copy.deepcopy(empty_dict_cache)
+    avg_short_price_cache = copy.deepcopy(empty_dict_cache)
+    long_qty_cache = copy.deepcopy(empty_dict_cache)
+    short_qty_cache = copy.deepcopy(empty_dict_cache)
+    long_price_cache = copy.deepcopy(empty_dict_cache)
+    short_price_cache = copy.deepcopy(empty_dict_cache)
 
     mid_cache = copy.deepcopy(empty_dict_cache)
     micro_cache = copy.deepcopy(empty_dict_cache)
     most_mid_cache = copy.deepcopy(empty_dict_cache)
     forecast_cache = copy.deepcopy(empty_dict_cache)
+
+    def compute_avg_cost(self, own_trades, timestamp, product, curr_pos):
+        if own_trades:
+            for trade in own_trades:
+                if trade.timestamp == timestamp - 100:
+                    if trade.seller == "SUBMISSION":  # sell
+                        self.short_qty_cache[product].append(-trade.quantity)
+                        self.short_price_cache[product].append(trade.price)
+                    else:
+                        self.short_qty_cache[product].append(0)
+                        self.short_price_cache[product].append(0)
+                    if trade.buyer == "SUBMISSION":
+                        self.long_qty_cache[product].append(trade.quantity)
+                        self.long_price_cache[product].append(trade.price)
+                    else:
+                        self.long_qty_cache[product].append(0)
+                        self.long_price_cache[product].append(0)
+
+        idx = -1
+        long_qty = self.long_qty_cache[product]
+        short_qty = self.short_qty_cache[product]
+        long_price = self.long_price_cache[product]
+        short_price = self.short_price_cache[product]
+        long_avg, short_avg = 0, 0
+        if curr_pos != 0:
+            temp_pos = 0
+            for i in range(len(long_qty) - 1, -1, -1):
+                temp_pos += short_qty[i] + long_qty[i]
+                if curr_pos > 0 and temp_pos >= curr_pos:
+                    idx = i
+                    break
+                elif curr_pos < 0 and temp_pos <= curr_pos:
+                    idx = i
+                    break
+                else:
+                    continue
+        if idx != -1:
+            qty = np.array(long_qty)[idx:]
+            price = np.array(long_price)[idx:]
+            if sum(qty) == 0:
+                long_avg = 0
+            else:
+                long_avg = sum(price * qty) / sum(qty)
+
+            qty = np.array(short_qty)[idx:]
+            price = np.array(short_price)[idx:]
+
+            if sum(qty) == 0:
+                short_avg = 1e6
+            else:
+                short_avg = sum(price * qty) / sum(qty)
+        return long_avg, short_avg
+
+    def process_traders(self, trades):
+        buyer, seller = {}, {}
+        if trades:
+            for i in trades:
+                buyer[i.buyer] = i.quantity
+                seller[i.seller] = i.quantity
+        return buyer, seller
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         conversions = 0
@@ -747,21 +679,22 @@ class Trader:
         result = {}  # Orders to be placed on exchange matching engine
         for product in state.order_depths:
             curr_pos = state.position.get(product, 0)
+            self.position_cache[product].append(curr_pos)
+
+            own_trades = state.own_trades.get(product)
+
+            long_avg, short_avg = self.compute_avg_cost(
+                own_trades=own_trades,
+                timestamp=timestamp,
+                product=product,
+                curr_pos=curr_pos,
+            )
 
             # get order & trade data
             order_depth: OrderDepth = state.order_depths[product]
             order_book = orderbook(order_depth=order_depth)
 
-            trades = (
-                state.market_trades[product]
-                if product in list(state.market_trades.keys())
-                else None
-            )
-            buyer, seller = {}, {}
-            if trades is not None:
-                for i in trades:
-                    buyer[i.buyer] = i.quantity
-                    seller[i.seller] = i.quantity
+            trades = state.market_trades.get(product, None)
 
             if product == tradable_product.RAINFOREST_RESIN:
                 product_params = self.params[product]
@@ -770,20 +703,23 @@ class Trader:
 
                 resin_strat = trading_strategy(
                     product=product,
+                    product_params=product_params,
                     position=curr_pos,
                     position_limit=position_limit.RAINFOREST_RESIN,
                     order_book=order_book,
                     fair_value=resin_FV.RAINFOREST_RESIN_FV(),
                 )
 
-                orders = resin_strat.market_make(
-                    ask_slip=product_params["ask_slip"],
-                    bid_slip=product_params["bid_slip"],
-                    decay=product_params["decay"],
-                    threshold=product_params["threshold"],
+                fv_arb_buy_orders = resin_strat.fv_arb(
+                    quote=quotes.ask, avg_price=short_avg
+                )
+                fv_arb_sell_orders = resin_strat.fv_arb(
+                    quote=quotes.bid, avg_price=long_avg
                 )
 
-                result[product] = orders
+                MM_orders = resin_strat.market_make_RESIN()
+
+                result[product] = fv_arb_buy_orders + fv_arb_sell_orders + MM_orders
 
             if product == tradable_product.KELP:
                 product_params = self.params[product]
@@ -799,20 +735,23 @@ class Trader:
 
                 kelp_strat = trading_strategy(
                     product=product,
+                    product_params=product_params,
                     position=curr_pos,
                     position_limit=position_limit.KELP,
                     order_book=order_book,
                     fair_value=forecast,
                 )
 
-                orders = kelp_strat.market_make(
-                    ask_slip=product_params["ask_slip"],
-                    bid_slip=product_params["bid_slip"],
-                    decay=product_params["decay"],
-                    threshold=product_params["threshold"],
+                fv_arb_buy_orders = kelp_strat.fv_arb(
+                    quote=quotes.ask, avg_price=short_avg
+                )
+                fv_arb_sell_orders = kelp_strat.fv_arb(
+                    quote=quotes.bid, avg_price=long_avg
                 )
 
-                result[product] = orders
+                MM_orders = kelp_strat.market_make_KELP()
+
+                result[product] = fv_arb_buy_orders + fv_arb_sell_orders + MM_orders
 
                 self.forecast_cache[product].append(forecast)
                 self.mid_cache[product].append(mid_price)
@@ -821,75 +760,3 @@ class Trader:
 
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
-
-
-# avg_long_price_cache = copy.deepcopy(empty_dict_cache)
-# avg_short_price_cache = copy.deepcopy(empty_dict_cache)
-# long_qty_cache = copy.deepcopy(empty_dict_cache)
-# short_qty_cache = copy.deepcopy(empty_dict_cache)
-# long_price_cache = copy.deepcopy(empty_dict_cache)
-# short_price_cache = copy.deepcopy(empty_dict_cache)
-
-# curr_pos = state.position.get(product, 0)
-# self.position_cache[product].append(curr_pos)
-
-# own_trades = state.own_trades.get(product)
-
-# if own_trades is not None:
-#     for trade in own_trades:
-#         if trade.timestamp == timestamp - 100:
-#             if trade.seller == "SUBMISSION":  # sell
-#                 self.short_qty_cache[product].append(-trade.quantity)
-#                 self.short_price_cache[product].append(trade.price)
-#             else:
-#                 self.short_qty_cache[product].append(0)
-#                 self.short_price_cache[product].append(0)
-#             if trade.buyer == "SUBMISSION":
-#                 self.long_qty_cache[product].append(trade.quantity)
-#                 self.long_price_cache[product].append(trade.price)
-#             else:
-#                 self.long_qty_cache[product].append(0)
-#                 self.long_price_cache[product].append(0)
-
-# idx = -1
-# long_qty = self.long_qty_cache[product]
-# short_qty = self.short_qty_cache[product]
-# long_price = self.long_price_cache[product]
-# short_price = self.short_price_cache[product]
-# long_avg, short_avg = 0, 0
-# if curr_pos != 0:
-#     temp_pos = 0
-#     for i in range(len(long_qty) - 1, -1, -1):
-#         temp_pos += short_qty[i] + long_qty[i]
-#         if curr_pos > 0 and temp_pos >= curr_pos:
-#             idx = i
-#             break
-#         elif curr_pos < 0 and temp_pos <= curr_pos:
-#             idx = i
-#             break
-#         else:
-#             continue
-# if idx != -1:
-#     qty = np.array(long_qty)[idx:]
-#     price = np.array(long_price)[idx:]
-#     if sum(qty) == 0:
-#         long_avg = 0
-#     else:
-#         long_avg = sum(price * qty) / sum(qty)
-
-#     qty = np.array(short_qty)[idx:]
-#     price = np.array(short_price)[idx:]
-
-#     if sum(qty) == 0:
-#         short_avg = 0
-#     else:
-#         short_avg = sum(price * qty) / sum(qty)
-
-# if long_avg != 0 and short_avg != 0:
-#     mid_cost = (long_avg + short_avg) / 2
-# elif long_avg == 0 and short_avg != 0:
-#     mid_cost = short_avg
-# elif long_avg != 0 and short_avg == 0:
-#     mid_cost = long_avg
-# else:
-#     mid_cost = 0
