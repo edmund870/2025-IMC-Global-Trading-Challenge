@@ -193,7 +193,7 @@ class orderbook:
         if quote == quotes.ask:
             return min(self.asks, key=lambda tup: tup[0])
 
-    def get_level(self, quote: quotes, level):
+    def get_level(self, quote: quotes, level) -> list[int, int]:
         if quote == quotes.bid:
             return list(self.bids)[level]
         if quote == quotes.ask:
@@ -205,37 +205,37 @@ class orderbook:
         if quote == quotes.ask:
             return min(self.asks, key=lambda tup: tup[1])
 
-    def spread(self):
+    def spread(self) -> int:
         return abs(
             self.top_of_book(quote=quotes.bid)[0]
             - self.top_of_book(quote=quotes.ask)[0]
         )
 
-    def most_micro_price(self):
+    def most_micro_price(self) -> float:
         most_ask, most_ask_vol = self.high_volume_quotes(quote=quotes.ask)
         most_bid, most_bid_vol = self.high_volume_quotes(quote=quotes.bid)
         return (most_ask * most_bid_vol + most_bid * abs(most_ask_vol)) / (
             abs(most_ask_vol) + most_bid_vol
         )
 
-    def micro_price(self):
+    def micro_price(self) -> float:
         best_ask, best_ask_vol = self.top_of_book(quote=quotes.ask)
         best_bid, best_bid_vol = self.top_of_book(quote=quotes.bid)
         return (best_ask * best_bid_vol + best_bid * abs(best_ask_vol)) / (
             abs(best_ask_vol) + best_bid_vol
         )
 
-    def most_mid_price(self):
+    def most_mid_price(self) -> float:
         most_ask, _ = self.high_volume_quotes(quote=quotes.ask)
         most_bid, _ = self.high_volume_quotes(quote=quotes.bid)
         return (most_ask + most_bid) / 2
 
-    def mid_price(self):
+    def mid_price(self) -> float:
         best_ask, _ = self.top_of_book(quote=quotes.ask)
         best_bid, _ = self.top_of_book(quote=quotes.bid)
         return (best_ask + best_bid) / 2
 
-    def total_volume(self, quote: quotes):
+    def total_volume(self, quote: quotes) -> int:
         volume = 0
         if quote == quotes.bid:
             for _, vol in self.bids:
@@ -247,17 +247,17 @@ class orderbook:
 
         return volume
 
-    def skew(self):
+    def skew(self) -> float:
         bid_vol = self.total_volume(quote=quotes.bid)
         ask_vol = self.total_volume(quote=quotes.ask)
         return (bid_vol - ask_vol) / (ask_vol + bid_vol)
 
-    def volume_ratio(self):
+    def volume_ratio(self) -> float:
         bid_vol = self.total_volume(quote=quotes.bid)
         ask_vol = self.total_volume(quote=quotes.ask)
         return bid_vol / ask_vol
 
-    def depth(self, quote: quotes):
+    def depth(self, quote: quotes) -> int:
         if quote == quotes.bid:
             return len(self.bids)
         if quote == quotes.ask:
@@ -275,7 +275,7 @@ class fair_value:
         base = 10_000
         return base
 
-    def log_likelihood(self, sigma2, y_diff, residual):
+    def log_likelihood(self, sigma2, y_diff, residual) -> float:
         T = len(y_diff)
 
         ll = -T / 2 * np.log(2 * np.pi * sigma2) - (1 / (2 * sigma2)) * np.sum(
@@ -284,7 +284,9 @@ class fair_value:
 
         return -ll
 
-    def gradient(self, mu, sigma2, params, y_diff, X1_diff, X2_diff):
+    def gradient(
+        self, mu, sigma2, params, y_diff, X1_diff, X2_diff
+    ) -> tuple[np.ndarray, float]:
         theta_1, beta_1, beta_2 = params
         y_diff_prev, X1_diff, X2_diff = (
             y_diff[:-1],
@@ -316,7 +318,7 @@ class fair_value:
         learning_rate=np.array([12e-7, 2e-6, 16e-7]),
         max_iter=100,
         tolerance=1e-5,
-    ):
+    ) -> list[float, float, float]:
         params = np.array(initial_params)
         prev_loss = 1e10
         for _ in range(max_iter):
@@ -401,13 +403,13 @@ class trading_strategy:
         self.max_buy_price = fair_value + product_params.get("ask_slip", 0)
         self.max_sell_price = fair_value + product_params.get("bid_slip", 0)
 
-    def ladder(self, qty, n, decay):
+    def ladder(self, qty, n, decay) -> list[int]:
         raw_values = [math.exp(-decay * i) for i in range(1, n + 1)]
         sum_raw = sum(raw_values)
         ladder = [math.floor(qty * value / sum_raw) for value in raw_values]
         return ladder
 
-    def ladder_orders(self, max_price, highest_trade, quote, decay):
+    def ladder_orders(self, max_price, highest_trade, quote, decay) -> list[Order]:
         orders = []
         if quote == quotes.bid:
             highest_bid = self.order_book.get_level(quote=quotes.bid, level=0)[0]
@@ -435,7 +437,7 @@ class trading_strategy:
 
         return orders
 
-    def fv_arb(self, quote, avg_price):
+    def fv_arb(self, quote, avg_price) -> list[Order]:
         orders = []
         if quote == quotes.bid:
             for bid, bid_vol in self.order_book.bids:
@@ -463,7 +465,7 @@ class trading_strategy:
 
         return orders
 
-    def rest_order(self, quote, price, quantity):
+    def rest_order(self, quote, price, quantity) -> list[Order]:
         orders = []
         if quote == quotes.bid:
             # resting bids
@@ -609,7 +611,9 @@ class Trader:
     most_mid_cache = copy.deepcopy(empty_dict_cache)
     forecast_cache = copy.deepcopy(empty_dict_cache)
 
-    def compute_avg_cost(self, own_trades, timestamp, product, curr_pos):
+    def compute_avg_cost(
+        self, own_trades, timestamp, product, curr_pos
+    ) -> tuple[float, float]:
         if own_trades:
             for trade in own_trades:
                 if trade.timestamp == timestamp - 100:
@@ -661,7 +665,7 @@ class Trader:
                 short_avg = sum(price * qty) / sum(qty)
         return long_avg, short_avg
 
-    def process_traders(self, trades):
+    def process_traders(self, trades) -> tuple[dict, dict]:
         buyer, seller = {}, {}
         if trades:
             for i in trades:
