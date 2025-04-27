@@ -1,7 +1,7 @@
 # 2025-IMC-Global-Trading-Challenge
 **Final Rank: 441 / 12,600 Teams**
 
-<img src="Results/Final Leaderboard.png" alt="Final Results" width="600"/>
+<img src="Results/Final Leaderboard.png" alt="Final Results" width="1000"/>
 
 \
 Over 15 days, I participated in Prosperity 3, an algorithmic trading competition hosted by IMC Trading. Each of the five rounds provided participants with 72 hours to design and code a trading strategy tailored to a new set of products. This year proved especially challenging, with more teams, more products, and tighter timelines. Balancing a busy school and work schedule, I was only able to dedicate 2–3 hours per day to the competition. Nonetheless, I am documenting my approach and results below.
@@ -33,8 +33,9 @@ To dynamically update model parameters, gradient descent was implemented to maxi
 For `SQUID_INK`, a linear regression model was fitted with the mid-price of `KELP` as the predictor 𝑋 and the mid-price of `SQUID_INK` as the response 𝑌. The model was used to forecast the next mid-price of `SQUID_INK`. The difference between the predicted and current mid-price was standardized into a Z-score based on historical spread statistics. If the Z-score exceeded a predefined threshold, directional trading (rather than market making) was executed.
 
 **Round 1 Results: 79 / 12,600** 
-<img src="Results/Round_1_Results.png" alt="Round 1 Results" width="600"/>
-<img src="Results/Round_1_pnl.png" alt="Round 1 Results" width="600"/>
+
+<img src="Results/Round_1_Results.png" alt="Round 1 Results" width="1000"/>
+<img src="Results/Round_1_pnl.png" alt="Round 1 Results" width="1000"/>
 
 ### Post-Round Thoughts
 Round 1 results were satisfactory. I had additional time to refine the strategies for `RAINFOREST_RESIN` and `KELP`, as these products were available during the tutorial phase.
@@ -67,8 +68,8 @@ Adjustments to Round 1: Further EDA revealed that `KELP` no longer exhibited the
 
 **Round 2 Results: 428 / 12,600** 
 
-<img src="Results/Round_2_Results.png" alt="Round 2 Results" width="600"/>
-<img src="Results/Round_2_pnl.png" alt="Round 2 Results" width="600"/>
+<img src="Results/Round_2_Results.png" alt="Round 2 Results" width="1000"/>
+<img src="Results/Round_2_pnl.png" alt="Round 2 Results" width="1000"/>
 
 ### Post-Round Thoughts
 Round 2 saw a drop in rankings. Trading the underlying products of the ETFs proved unprofitable, and the strategy adjustment for `KELP` did not perform as well as expected. Additionally, `PICNIC_BASKET2` significantly underperformed.
@@ -112,8 +113,8 @@ Instead, I reverse-engineered the theoretical underlying price from the nearest 
 
 **Round 3 Results: 41 / 12,600**
 
-<img src="Results/Round_3_Results.png" alt="Round 3 Results" width="600"/>
-<img src="Results/Round_3_pnl.png" alt="Round 3 Results" width="600"/>
+<img src="Results/Round_3_Results.png" alt="Round 3 Results" width="1000"/>
+<img src="Results/Round_3_pnl.png" alt="Round 3 Results" width="1000"/>
 
 ### Post-Round Thoughts
 The PnL graph was highly volatile. Upon investigation, I realized the code had shorted nearly all the options and the underlying, leading to the unexpected result.
@@ -129,21 +130,21 @@ Key factors included import/export tariffs, transportation costs, and storage co
 When buying MAGNIFICENT_MACARONS from Pristine Cuisine, trades were executed at the ask price, incurring transportation fees but benefiting from import tariffs:
 
 $$
-\text{pristine\_buy} = \text{conv\_ask} + \text{transport\_fees} + \text{import\_tariff}
+\text{pristine buy} = \text{conv ask} + \text{transport fees} + \text{import tariff}
 $$
 
 When selling to Pristine Cuisine, trades were executed at the bid price, incurring transportation fees and export tariffs:
 
 $$
-\text{pristine\_sell} = \text{conv\_bid} - \text{transport\_fees} - \text{export\_tariff}
+\text{pristine sell} = \text{conv bid} - \text{transport fees} - \text{export tariff}
 $$
 
 Analysis revealed that MAGNIFICENT_MACARONS were cointegrated with the mid-price at Pristine Cuisine and the sunlightIndex. Thus, a VECM model was applied to predict trading signals. Each time a buy or sell signal was detected, I compared the effective trading prices between Archipelago and Pristine Cuisine to execute the most profitable trade.
 
 **Round 4 Results: 281 / 12,600** 
 
-<img src="Results/Round_4_Results.png" alt="Round 4 Results" width="600"/>
-<img src="Results/Round_4_pnl.png" alt="Round 4 Results" width="600"/>
+<img src="Results/Round_4_Results.png" alt="Round 4 Results" width="1000"/>
+<img src="Results/Round_4_pnl.png" alt="Round 4 Results" width="1000"/>
 
 ### Post-Round Thoughts
 Round 4 did not perform as expected. The majority of products began to lose seashells, resulting in negative performance overall.
@@ -161,15 +162,15 @@ Based on this analysis, I implemented a trade_with and trade_against parameter f
 
 **Round 5 Results: 441 / 12,600** 
 
-<img src="Results/Round_5_Results.png" alt="Round 5 Results" width="600"/>
-<img src="Results/Round_5_pnl.png" alt="Round 5 Results" width="600"/>
+<img src="Results/Round_5_Results.png" alt="Round 5 Results" width="1000"/>
+<img src="Results/Round_5_pnl.png" alt="Round 5 Results" width="1000"/>
 
 ### Post-Round Thoughts
 Unfortunately, another round with negative profits. It seems I may have overly focused on identifying counterparties. Applying too many filters, especially on specific trades and quantities, proved too granular. A higher-level overview would likely have been more effective. There is still significant room for improvement across most of the products.
 
 ### Final Thoughts
 
-<img src="Results/All_Rounds_pnl.png" alt="All PNL" width="600"/>
+<img src="Results/All_Rounds_pnl.png" alt="All PNL" width="1000"/>
 
 Despite the time constraints, Prosperity 3 was an enriching and eye-opening experience in the world of market making and trading products with diverse characteristics. Some of the concepts I experimented with didn’t work as intended, and due to time limitations, I couldn't test more alternatives. It became clear that the VECM model implementation wasn't as effective as expected, and I still have a lot to learn, particularly in options trading. Nonetheless, this has been an invaluable and memorable experience.
 
