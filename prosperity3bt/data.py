@@ -13,6 +13,13 @@ LIMITS = {
     "DJEMBES": 60,
     "PICNIC_BASKET1": 60,
     "PICNIC_BASKET2": 100,
+    "VOLCANIC_ROCK": 400,
+    "VOLCANIC_ROCK_VOUCHER_9500": 200,
+    "VOLCANIC_ROCK_VOUCHER_9750": 200,
+    "VOLCANIC_ROCK_VOUCHER_10000": 200,
+    "VOLCANIC_ROCK_VOUCHER_10250": 200,
+    "VOLCANIC_ROCK_VOUCHER_10500": 200,
+    "MAGNIFICENT_MACARONS": 75,
 }
 
 
@@ -43,48 +50,109 @@ def get_column_values(columns: list[str], indices: list[int]) -> list[int]:
 
 
 @dataclass
+class ObservationRow:
+    timestamp: int
+    bidPrice: float
+    askPrice: float
+    transportFees: float
+    exportTariff: float
+    importTariff: float
+    sugarPrice: float
+    sunlightIndex: float
+
+
+@dataclass
 class BacktestData:
     round_num: int
     day_num: int
 
     prices: dict[int, dict[Symbol, PriceRow]]
     trades: dict[int, dict[Symbol, list[Trade]]]
+    observations: dict[int, ObservationRow]
     products: list[Symbol]
     profit_loss: dict[Symbol, float]
 
 
-def create_backtest_data(round_num: int, day_num: int, prices: list[PriceRow], trades: list[Trade]) -> BacktestData:
+def create_backtest_data(
+    round_num: int,
+    day_num: int,
+    prices: list[PriceRow],
+    trades: list[Trade],
+    observations: list[ObservationRow],
+) -> BacktestData:
     prices_by_timestamp: dict[int, dict[Symbol, PriceRow]] = defaultdict(dict)
     for row in prices:
         prices_by_timestamp[row.timestamp][row.product] = row
 
-    trades_by_timestamp: dict[int, dict[Symbol, list[Trade]]] = defaultdict(lambda: defaultdict(list))
+    trades_by_timestamp: dict[int, dict[Symbol, list[Trade]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     for trade in trades:
         trades_by_timestamp[trade.timestamp][trade.symbol].append(trade)
 
     products = sorted(set(row.product for row in prices))
     profit_loss = {product: 0.0 for product in products}
 
+    observations_by_timestamp = {row.timestamp: row for row in observations}
+
     return BacktestData(
         round_num=round_num,
         day_num=day_num,
         prices=prices_by_timestamp,
         trades=trades_by_timestamp,
+        observations=observations_by_timestamp,
         products=products,
         profit_loss=profit_loss,
     )
 
 
 def has_day_data(file_reader: FileReader, round_num: int, day_num: int) -> bool:
-    with file_reader.file([f"round{round_num}", f"prices_round_{round_num}_day_{day_num}.csv"]) as file:
+    with file_reader.file(
+        [f"round{round_num}", f"prices_round_{round_num}_day_{day_num}.csv"]
+    ) as file:
         return file is not None
 
 
-def read_day_data(file_reader: FileReader, round_num: int, day_num: int, no_names: bool) -> BacktestData:
-    prices = []
-    with file_reader.file([f"round{round_num}", f"prices_round_{round_num}_day_{day_num}.csv"]) as file:
+def read_observations(
+    file_reader: FileReader, round_num: int, day_num: int
+) -> list[ObservationRow]:
+    observations = []
+    with file_reader.file(
+        [f"round{round_num}", f"observations_round_{round_num}_day_{day_num}.csv"]
+    ) as file:
         if file is None:
-            raise ValueError(f"Prices data is not available for round {round_num} day {day_num}")
+            return []
+
+        for line in file.read_text(encoding="utf-8").splitlines()[1:]:
+            columns = line.split(",")
+
+            observations.append(
+                ObservationRow(
+                    timestamp=int(columns[0]),
+                    bidPrice=float(columns[1]),
+                    askPrice=float(columns[2]),
+                    transportFees=float(columns[3]),
+                    exportTariff=float(columns[4]),
+                    importTariff=float(columns[5]),
+                    sugarPrice=float(columns[6]),
+                    sunlightIndex=float(columns[7]),
+                )
+            )
+
+    return observations
+
+
+def read_day_data(
+    file_reader: FileReader, round_num: int, day_num: int, no_names: bool
+) -> BacktestData:
+    prices = []
+    with file_reader.file(
+        [f"round{round_num}", f"prices_round_{round_num}_day_{day_num}.csv"]
+    ) as file:
+        if file is None:
+            raise ValueError(
+                f"Prices data is not available for round {round_num} day {day_num}"
+            )
 
         for line in file.read_text(encoding="utf-8").splitlines()[1:]:
             columns = line.split(";")
@@ -107,7 +175,12 @@ def read_day_data(file_reader: FileReader, round_num: int, day_num: int, no_name
     trades_suffixes = ["nn"] if no_names else ["wn", "nn"]
 
     for suffix in trades_suffixes:
-        with file_reader.file([f"round{round_num}", f"trades_round_{round_num}_day_{day_num}_{suffix}.csv"]) as file:
+        with file_reader.file(
+            [
+                f"round{round_num}",
+                f"trades_round_{round_num}_day_{day_num}_{suffix}.csv",
+            ]
+        ) as file:
             if file is None:
                 continue
 
@@ -127,4 +200,6 @@ def read_day_data(file_reader: FileReader, round_num: int, day_num: int, no_name
 
             break
 
-    return create_backtest_data(round_num, day_num, prices, trades)
+    observations = read_observations(file_reader, round_num, day_num)
+
+    return create_backtest_data(round_num, day_num, prices, trades, observations)
