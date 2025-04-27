@@ -12,7 +12,7 @@ Over 15 days, I participated in Prosperity 3, an algorithmic trading competition
 - [Round 4](#round-4) - Exchange Arbitrage
 - [Round 5](#round-5) - Counterparty Trading 
 
-## Round 1 - **[Submission Code](https://github.com/edmund870/2024-IMC-Global-Trading-Challenge/blob/main/Round%201/Round%201%20Submission.py)**
+## Round 1 - **[Submission Code](https://github.com/edmund870/2025-IMC-Global-Trading-Challenge/blob/main/Submissions/Round_1_final.py)**
 
 **Products Traded: `RAINFOREST_RESIN`, `KELP`, `SQUID_INK`**
 
@@ -39,7 +39,7 @@ For `SQUID_INK`, a linear regression model was fitted with the mid-price of `KEL
 ### Post-Round Thoughts
 Round 1 results were satisfactory. I had additional time to refine the strategies for `RAINFOREST_RESIN` and `KELP`, as these products were available during the tutorial phase.
 
-## Round 2 - **[Submission Code](https://github.com/edmund870/2024-IMC-Global-Trading-Challenge/blob/main/Round%202/Round%202%20Submission.py)**
+## Round 2 - **[Submission Code](https://github.com/edmund870/2025-IMC-Global-Trading-Challenge/blob/main/Submissions/Round_2_final.py)**
 
 **New Product Traded: `CROISSANTS`, `JAMS`, `DJEMBES`, `PICNIC_BASKET1`, `PICNIC_BASKET2`**
 
@@ -73,7 +73,7 @@ Adjustments to Round 1: Further EDA revealed that `KELP` no longer exhibited the
 ### Post-Round Thoughts
 Round 2 saw a drop in rankings. Trading the underlying products of the ETFs proved unprofitable, and the strategy adjustment for `KELP` did not perform as well as expected. Additionally, `PICNIC_BASKET2` significantly underperformed.
 
-## Round 3 - **[Submission Code](https://github.com/edmund870/2024-IMC-Global-Trading-Challenge/blob/main/Round%203/Round%203%20Submission.py)**
+## Round 3 - **[Submission Code](https://github.com/edmund870/2025-IMC-Global-Trading-Challenge/blob/main/Submissions/Round_3_final.py)**
 
 **New Products Traded: `VOLCANIC_ROCK`,`VOLCANIC_ROCK_VOUCHER_9500`, `VOLCANIC_ROCK_VOUCHER_9750`, `VOLCANIC_ROCK_VOUCHER_10000`, `VOLCANIC_ROCK_VOUCHER_10250`, `VOLCANIC_ROCK_VOUCHER_10500`**
 
@@ -119,7 +119,7 @@ Instead, I reverse-engineered the theoretical underlying price from the nearest 
 The PnL graph was highly volatile. Upon investigation, I realized the code had shorted nearly all the options and the underlying, leading to the unexpected result.
 Despite a significant jump in rankings, this outcome was unintended, and there remains considerable room for improvement.
 
-## Round 4 - **[Submission Code](https://github.com/edmund870/2024-IMC-Global-Trading-Challenge/blob/main/Round%204/Round%204%20Submission.py)**
+## Round 4 - **[Submission Code](https://github.com/edmund870/2025-IMC-Global-Trading-Challenge/blob/main/Submissions/Round_4_final.py)**
 
 **New Products Traded: `MAGNIFICENT_MACARONS`**
 
@@ -148,7 +148,7 @@ Analysis revealed that MAGNIFICENT_MACARONS were cointegrated with the mid-price
 ### Post-Round Thoughts
 Round 4 did not perform as expected. The majority of products began to lose seashells, resulting in negative performance overall.
 
-## Round 5 - **[Submission Code](https://github.com/edmund870/2024-IMC-Global-Trading-Challenge/blob/main/Round%205/Round%205%20Submission.py)**
+## Round 5 - **[Submission Code](https://github.com/edmund870/2025-IMC-Global-Trading-Challenge/blob/main/Submissions/Round_5_final.py)**
 **New Product Traded: -**
 
 **Counterparty Trades were revealed**
